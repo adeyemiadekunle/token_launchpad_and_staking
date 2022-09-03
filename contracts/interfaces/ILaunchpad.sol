@@ -13,6 +13,9 @@ interface ILaunchpad {
     uint256 saleStartTime;
     uint256 saleEndTime;
     bool interrupted;
+    address proceedsTo;
+    address admin;
+    uint256 availableTokens;
   }
 
   event TokenSaleItemCreated(
@@ -25,7 +28,9 @@ interface ILaunchpad {
     uint256 minContributionEther,
     uint256 maxContributionEther,
     uint256 saleStartTime,
-    uint256 saleEndTime
+    uint256 saleEndTime,
+    address proceedsTo,
+    address admin
   );
 
   function initTokenSale(
@@ -37,12 +42,12 @@ interface ILaunchpad {
     uint256 minContributionEther,
     uint256 maxContributionEther,
     uint256 saleStartTime,
-    uint256 daysToLast
+    uint256 daysToLast,
+    address proceedsTo,
+    address admin
   ) external returns (bytes32 saleId);
 
   function interrupTokenSale(bytes32 saleId) external;
-
-  function emergencyWithdrawal() external;
 
   function allTokenSales(uint256) external view returns (bytes32);
 }

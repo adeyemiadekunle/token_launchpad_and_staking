@@ -20,6 +20,20 @@ contract Launchpad is ReentrancyGuard, Pausable, Ownable, AccessControl, ILaunch
   uint256 public withdrawable;
 
   mapping(bytes32 => TokenSaleItem) private tokenSales;
+  mapping(bytes32 => uint256) private totalEtherRaised;
+  mapping(bytes32 => mapping(address => bool)) private isNotAllowedToContribute;
+  mapping(bytes32 => mapping(address => uint256)) private amountContributed;
+  mapping(bytes32 => mapping(address => uint256)) private balance;
+
+  modifier whenParamsSatisfied(bytes32 saleId) {
+    TokenSaleItem memory tokenSale = tokenSales[saleId];
+    require(!tokenSale.interrupted, "token_sale_paused_or_ended");
+    require(block.timestamp >= tokenSale.saleStartTime, "token_sale_not_started_yet");
+    require(block.timestamp < tokenSale.saleEndTime, "token_sale_has_ended");
+    require(!isNotAllowedToContribute[saleId][_msgSender()], "you_are_not_allowed_to_participate_in_this_sale");
+    require(totalEtherRaised[saleId] < tokenSale.hardCap, "hardcap_reached");
+    _;
+  }
 
   constructor() {
     _grantRole(pauserRole, _msgSender());
@@ -35,7 +49,9 @@ contract Launchpad is ReentrancyGuard, Pausable, Ownable, AccessControl, ILaunch
     uint256 minContributionEther,
     uint256 maxContributionEther,
     uint256 saleStartTime,
-    uint256 daysToLast
+    uint256 daysToLast,
+    address proceedsTo,
+    address admin
   ) external whenNotPaused nonReentrant returns (bytes32 saleId) {
     require(token.isContract(), "must_be_contract_address");
     require(saleStartTime > block.timestamp && saleStartTime.sub(block.timestamp) >= 24 hours, "sale_must_begin_in_at_least_24_hours");
@@ -53,7 +69,8 @@ contract Launchpad is ReentrancyGuard, Pausable, Ownable, AccessControl, ILaunch
         minContributionEther,
         maxContributionEther,
         saleStartTime,
-        daysToLast
+        daysToLast,
+        proceedsTo
       )
     );
     tokenSales[saleId] = TokenSaleItem(
@@ -67,7 +84,10 @@ contract Launchpad is ReentrancyGuard, Pausable, Ownable, AccessControl, ILaunch
       maxContributionEther,
       saleStartTime,
       saleStartTime.add(daysToLast * 1 days),
-      false
+      false,
+      proceedsTo,
+      admin,
+      tokensForSale
     );
     allTokenSales.push(saleId);
     emit TokenSaleItemCreated(
@@ -80,7 +100,49 @@ contract Launchpad is ReentrancyGuard, Pausable, Ownable, AccessControl, ILaunch
       minContributionEther,
       maxContributionEther,
       saleStartTime,
-      saleStartTime.add(daysToLast * 1 days)
+      saleStartTime.add(daysToLast * 1 days),
+      proceedsTo,
+      admin
     );
+  }
+
+  function contribute(bytes32 saleId) external payable whenNotPaused nonReentrant whenParamsSatisfied(saleId) {
+    TokenSaleItem storage tokenSaleItem = tokenSales[saleId];
+    require(
+      msg.value >= tokenSaleItem.minContributionEther && msg.value <= tokenSaleItem.maxContributionEther,
+      "contribution_must_be_within_min_and_max_range"
+    );
+    uint256 val = tokenSaleItem.presaleRate.mul(msg.value).div(1 ether);
+    require(tokenSaleItem.availableTokens >= val, "tokens_available_for_sale_is_less");
+    balance[saleId][_msgSender()] = balance[saleId][_msgSender()].add(val);
+    amountContributed[saleId][_msgSender()] = amountContributed[saleId][_msgSender()].add(msg.value);
+    tokenSaleItem.availableTokens = tokenSaleItem.availableTokens.sub(val);
+  }
+
+  function emergencyWithdrawal(bytes32 saleId) external {
+    TokenSaleItem storage tokenSaleItem = tokenSales[saleId];
+    TransferHelpers._safeTransferEther(_msgSender(), amountContributed[saleId][_msgSender()]);
+    tokenSaleItem.availableTokens = tokenSaleItem.availableTokens.add(balance[saleId][_msgSender()]);
+    delete balance[saleId][_msgSender()];
+    delete amountContributed[saleId][_msgSender()];
+  }
+
+  function pauseLaunchpad() external whenNotPaused {
+    require(hasRole(pauserRole, _msgSender()), "must_have_pauser_role");
+    _pause();
+  }
+
+  function unpauseLaunchpad() external whenPaused {
+    require(hasRole(pauserRole, _msgSender()), "must_have_pauser_role");
+    _unpause();
+  }
+
+  function getTotalEtherRaisedForSale(bytes32 saleId) external view returns (uint256) {
+    return totalEtherRaised[saleId];
+  }
+
+  function getExpectedEtherRaiseForSale(bytes32 saleId) external view returns (uint256) {
+    TokenSaleItem memory tokenSaleItem = tokenSales[saleId];
+    return tokenSaleItem.presaleRate.mul(tokenSaleItem.tokensForSale);
   }
 }
