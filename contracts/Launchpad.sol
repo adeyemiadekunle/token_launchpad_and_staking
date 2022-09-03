@@ -204,6 +204,11 @@ contract Launchpad is ReentrancyGuard, Pausable, Ownable, AccessControl, ILaunch
     return tokenSaleItem.hardCap;
   }
 
+  function getSoftCap(bytes32 saleId) external view returns (uint256) {
+    TokenSaleItem memory tokenSaleItem = tokenSales[saleId];
+    return tokenSaleItem.softCap;
+  }
+
   function withdrawProfit(address to) external {
     require(hasRole(withdrawerRole, _msgSender()), "only_withdrawer");
     TransferHelpers._safeTransferEther(to, withdrawable);
