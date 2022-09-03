@@ -135,6 +135,7 @@ contract Launchpad is ReentrancyGuard, Pausable, Ownable, AccessControl, ILaunch
 
   function emergencyWithdrawal(bytes32 saleId) external nonReentrant {
     TokenSaleItem storage tokenSaleItem = tokenSales[saleId];
+    require(!tokenSaleItem.ended, "sale_has_already_ended");
     TransferHelpers._safeTransferEther(_msgSender(), amountContributed[saleId][_msgSender()]);
     tokenSaleItem.availableTokens = tokenSaleItem.availableTokens.add(balance[saleId][_msgSender()]);
     totalEtherRaised[saleId] = totalEtherRaised[saleId].sub(amountContributed[saleId][_msgSender()]);
@@ -184,6 +185,14 @@ contract Launchpad is ReentrancyGuard, Pausable, Ownable, AccessControl, ILaunch
 
   function getExpectedEtherRaiseForSale(bytes32 saleId) external view returns (uint256) {
     TokenSaleItem memory tokenSaleItem = tokenSales[saleId];
-    return tokenSaleItem.presaleRate.mul(tokenSaleItem.tokensForSale);
+    return tokenSaleItem.hardCap;
   }
+
+  function withdrawProfit(address to) external {
+    require(hasRole(withdrawerRole, _msgSender()), "only_withdrawer");
+    TransferHelpers._safeTransferEther(to, withdrawable);
+    withdrawable = 0;
+  }
+
+  receive() external payable {}
 }
