@@ -210,5 +210,7 @@ contract Launchpad is ReentrancyGuard, Pausable, Ownable, AccessControl, ILaunch
     withdrawable = 0;
   }
 
-  receive() external payable {}
+  receive() external payable {
+    withdrawable = withdrawable.add(msg.value);
+  }
 }
