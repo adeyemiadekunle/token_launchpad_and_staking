@@ -155,8 +155,8 @@ contract Launchpad is ReentrancyGuard, Pausable, Ownable, AccessControl, ILaunch
   }
 
   function finalizeTokenSale(bytes32 saleId) external whenNotPaused {
-    require(hasRole(finalizerRole, _msgSender()), "only_finalizer");
     TokenSaleItem storage tokenSale = tokenSales[saleId];
+    require(hasRole(finalizerRole, _msgSender()) || tokenSale.admin == _msgSender(), "only_finalizer_or_admin");
     require(!tokenSale.ended, "sale_has_ended");
     uint256 launchpadProfit = (totalEtherRaised[saleId] * feePercentage).div(100);
     TransferHelpers._safeTransferEther(tokenSale.proceedsTo, totalEtherRaised[saleId].sub(launchpadProfit));
@@ -167,6 +167,22 @@ contract Launchpad is ReentrancyGuard, Pausable, Ownable, AccessControl, ILaunch
     }
 
     tokenSale.ended = true;
+  }
+
+  function barFromParticiption(bytes32 saleId, address account) external {
+    TokenSaleItem memory tokenSale = tokenSales[saleId];
+    require(tokenSale.admin == _msgSender(), "only_admin");
+    require(!tokenSale.ended, "sale_has_ended");
+    require(!isNotAllowedToContribute[saleId][account], "already_barred");
+    isNotAllowedToContribute[saleId][account] = true;
+  }
+
+  function rescindBar(bytes32 saleId, address account) external {
+    TokenSaleItem memory tokenSale = tokenSales[saleId];
+    require(tokenSale.admin == _msgSender(), "only_admin");
+    require(!tokenSale.ended, "sale_has_ended");
+    require(isNotAllowedToContribute[saleId][account], "not_barred");
+    isNotAllowedToContribute[saleId][account] = false;
   }
 
   function pauseLaunchpad() external whenNotPaused {
