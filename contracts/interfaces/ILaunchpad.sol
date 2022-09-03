@@ -16,6 +16,7 @@ interface ILaunchpad {
     address proceedsTo;
     address admin;
     uint256 availableTokens;
+    bool ended;
   }
 
   event TokenSaleItemCreated(

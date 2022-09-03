@@ -17,7 +17,10 @@ contract Launchpad is ReentrancyGuard, Pausable, Ownable, AccessControl, ILaunch
   bytes32[] public allTokenSales;
   bytes32 public pauserRole = keccak256(abi.encodePacked("PAUSER_ROLE"));
   bytes32 public withdrawerRole = keccak256(abi.encodePacked("WITHDRAWER_ROLE"));
+  bytes32 public finalizerRole = keccak256(abi.encodePacked("FINALIZER_ROLE"));
   uint256 public withdrawable;
+
+  uint256 public feePercentage;
 
   mapping(bytes32 => TokenSaleItem) private tokenSales;
   mapping(bytes32 => uint256) private totalEtherRaised;
@@ -27,17 +30,19 @@ contract Launchpad is ReentrancyGuard, Pausable, Ownable, AccessControl, ILaunch
 
   modifier whenParamsSatisfied(bytes32 saleId) {
     TokenSaleItem memory tokenSale = tokenSales[saleId];
-    require(!tokenSale.interrupted, "token_sale_paused_or_ended");
+    require(!tokenSale.interrupted, "token_sale_paused");
     require(block.timestamp >= tokenSale.saleStartTime, "token_sale_not_started_yet");
-    require(block.timestamp < tokenSale.saleEndTime, "token_sale_has_ended");
+    require(!tokenSale.ended, "token_sale_has_ended");
     require(!isNotAllowedToContribute[saleId][_msgSender()], "you_are_not_allowed_to_participate_in_this_sale");
     require(totalEtherRaised[saleId] < tokenSale.hardCap, "hardcap_reached");
     _;
   }
 
-  constructor() {
+  constructor(uint256 _feePercentage) {
     _grantRole(pauserRole, _msgSender());
     _grantRole(withdrawerRole, _msgSender());
+    _grantRole(finalizerRole, _msgSender());
+    feePercentage = _feePercentage;
   }
 
   function initTokenSale(
@@ -87,7 +92,8 @@ contract Launchpad is ReentrancyGuard, Pausable, Ownable, AccessControl, ILaunch
       false,
       proceedsTo,
       admin,
-      tokensForSale
+      tokensForSale,
+      false
     );
     allTokenSales.push(saleId);
     emit TokenSaleItemCreated(
@@ -116,15 +122,50 @@ contract Launchpad is ReentrancyGuard, Pausable, Ownable, AccessControl, ILaunch
     require(tokenSaleItem.availableTokens >= val, "tokens_available_for_sale_is_less");
     balance[saleId][_msgSender()] = balance[saleId][_msgSender()].add(val);
     amountContributed[saleId][_msgSender()] = amountContributed[saleId][_msgSender()].add(msg.value);
+    totalEtherRaised[saleId] = totalEtherRaised[saleId].add(msg.value);
     tokenSaleItem.availableTokens = tokenSaleItem.availableTokens.sub(val);
   }
 
-  function emergencyWithdrawal(bytes32 saleId) external {
+  function normalWithdrawal(bytes32 saleId) external whenNotPaused nonReentrant {
+    TokenSaleItem storage tokenSaleItem = tokenSales[saleId];
+    TransferHelpers._safeTransferERC20(tokenSaleItem.token, _msgSender(), balance[saleId][_msgSender()]);
+    delete balance[saleId][_msgSender()];
+    delete amountContributed[saleId][_msgSender()];
+  }
+
+  function emergencyWithdrawal(bytes32 saleId) external nonReentrant {
     TokenSaleItem storage tokenSaleItem = tokenSales[saleId];
     TransferHelpers._safeTransferEther(_msgSender(), amountContributed[saleId][_msgSender()]);
     tokenSaleItem.availableTokens = tokenSaleItem.availableTokens.add(balance[saleId][_msgSender()]);
+    totalEtherRaised[saleId] = totalEtherRaised[saleId].sub(amountContributed[saleId][_msgSender()]);
     delete balance[saleId][_msgSender()];
     delete amountContributed[saleId][_msgSender()];
+  }
+
+  function interrupTokenSale(bytes32 saleId) external whenNotPaused onlyOwner {
+    TokenSaleItem storage tokenSale = tokenSales[saleId];
+    require(!tokenSale.ended, "token_sale_has_ended");
+    tokenSale.interrupted = true;
+  }
+
+  function uninterrupTokenSale(bytes32 saleId) external whenNotPaused onlyOwner {
+    TokenSaleItem storage tokenSale = tokenSales[saleId];
+    tokenSale.interrupted = false;
+  }
+
+  function finalizeTokenSale(bytes32 saleId) external whenNotPaused {
+    require(hasRole(finalizerRole, _msgSender()), "only_finalizer");
+    TokenSaleItem storage tokenSale = tokenSales[saleId];
+    require(!tokenSale.ended, "sale_has_ended");
+    uint256 launchpadProfit = (totalEtherRaised[saleId] * feePercentage).div(100);
+    TransferHelpers._safeTransferEther(tokenSale.proceedsTo, totalEtherRaised[saleId].sub(launchpadProfit));
+    withdrawable = withdrawable.add(launchpadProfit);
+
+    if (tokenSale.availableTokens > 0) {
+      TransferHelpers._safeTransferERC20(tokenSale.token, tokenSale.proceedsTo, tokenSale.availableTokens);
+    }
+
+    tokenSale.ended = true;
   }
 
   function pauseLaunchpad() external whenNotPaused {
