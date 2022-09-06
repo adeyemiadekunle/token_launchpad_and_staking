@@ -3,13 +3,14 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./interfaces/IStakingPool.sol";
 import "./helpers/TransferHelper.sol";
 
-contract StakingPool is Ownable, AccessControl, Pausable, IStakingPool {
+contract StakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard, IStakingPool {
   using SafeMath for uint256;
   using Address for address;
 
@@ -26,6 +27,7 @@ contract StakingPool is Ownable, AccessControl, Pausable, IStakingPool {
     address _stakableToken
   ) {
     require(_stakableToken == address(0) || _stakableToken.isContract(), "must_be_contract_or_zero_address");
+    require(_rewardToken == address(0) || _rewardToken.isContract(), "must_be_contract_or_zero_address");
     rewardToken = _rewardToken;
     stakableToken = _stakableToken;
     _grantRole(securePauserRole, _msgSender());
@@ -45,5 +47,30 @@ contract StakingPool is Ownable, AccessControl, Pausable, IStakingPool {
     stakeS.lockIntervals = lockDays;
     stakeS.since = block.timestamp;
     stakeS.stakeLockedFor = block.timestamp.add(lockDays);
+  }
+
+  function unstakeAmount(uint256 amount) external nonReentrant {
+    Stake storage stakeS = stakes[_msgSender()];
+    require(stakeS.amountStaked > 0, "0");
+    require(block.timestamp >= stakeS.stakeLockedFor, "cannot_unstake_now");
+    if (stakableToken == address(0)) {
+      TransferHelpers._safeTransferEther(_msgSender(), amount);
+      stakeS.amountStaked = stakeS.amountStaked.sub(amount);
+    } else {
+      TransferHelpers._safeTransferERC20(stakableToken, _msgSender(), amount);
+      stakeS.amountStaked = stakeS.amountStaked.sub(amount);
+    }
+  }
+
+  function unstakeAll() external nonReentrant {
+    Stake memory stakeS = stakes[_msgSender()];
+    require(stakeS.amountStaked > 0, "0");
+    require(block.timestamp >= stakeS.stakeLockedFor, "cannot_unstake_now");
+    if (stakableToken == address(0)) {
+      TransferHelpers._safeTransferEther(_msgSender(), stakeS.amountStaked);
+    } else {
+      TransferHelpers._safeTransferERC20(stakableToken, _msgSender(), stakeS.amountStaked);
+    }
+    delete stakes[_msgSender()];
   }
 }
