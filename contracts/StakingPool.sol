@@ -73,4 +73,29 @@ contract StakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard, IStak
     }
     delete stakes[_msgSender()];
   }
+
+  function securePause() external {
+    require(hasRole(securePauserRole, _msgSender()), "only_secure_pauser");
+    require(!isSecurePaused, "already_secure_paused");
+
+    if (!paused()) {
+      _pause();
+    }
+    isSecurePaused = true;
+  }
+
+  function secureUnpause() external {
+    require(hasRole(securePauserRole, _msgSender()), "only_secure_pauser");
+    require(isSecurePaused, "not_secure_paused");
+    isSecurePaused = false;
+  }
+
+  function pause() external onlyOwner {
+    _pause();
+  }
+
+  function unpause() external onlyOwner {
+    require(!isSecurePaused, "secure_paused");
+    _unpause();
+  }
 }
