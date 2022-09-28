@@ -1,6 +1,6 @@
 pragma solidity ^0.8.0;
 
-interface ILaunchpad {
+interface ITokenSaleCreator {
   struct TokenSaleItem {
     address token;
     uint256 tokensForSale;
@@ -51,4 +51,10 @@ interface ILaunchpad {
   function interrupTokenSale(bytes32 saleId) external;
 
   function allTokenSales(uint256) external view returns (bytes32);
+
+  function feePercentage() external view returns (uint256);
+
+  function balance(bytes32 saleId, address account) external view returns (uint256);
+
+  function amountContributed(bytes32 saleId, address account) external view returns (uint256);
 }

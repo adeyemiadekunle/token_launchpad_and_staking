@@ -27,4 +27,6 @@ interface IStakingPool {
   // function poolsByAddresses(address) external view returns (bytes32[] memory);
 
   function blockedAddresses(address) external view returns (bool);
+
+  function stakeIDs(uint256) external view returns (bytes32);
 }
