@@ -27,6 +27,8 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
   mapping(address => bytes32[]) public poolsByAddresses;
   mapping(address => bool) public blockedAddresses;
 
+  bytes32[] public stakeIDs;
+
   uint256 public withdrawable;
 
   constructor(
@@ -66,6 +68,7 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
     stakes[stakeId] = stake;
     bytes32[] storage stakez = poolsByAddresses[_msgSender()];
     stakez.push(stakeId);
+    stakeIDs.push(stakeId);
     emit Staked(msg.value, address(0), stake.since, _msgSender(), stakeId);
   }
 
@@ -80,6 +83,7 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
     stakes[stakeId] = stake;
     bytes32[] storage stakez = poolsByAddresses[_msgSender()];
     stakez.push(stakeId);
+    stakeIDs.push(stakeId);
     emit Staked(amount, token, stake.since, _msgSender(), stakeId);
   }
 

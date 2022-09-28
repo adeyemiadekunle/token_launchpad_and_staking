@@ -24,6 +24,8 @@ contract StakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard, IStak
   mapping(address => bytes32[]) public poolsByAddresses;
   mapping(address => bool) public blockedAddresses;
 
+  bytes32[] public stakeIDs;
+
   constructor(
     address newOwner,
     address token0,
@@ -67,6 +69,7 @@ contract StakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard, IStak
     stakes[stakeId] = stake;
     bytes32[] storage stakez = poolsByAddresses[_msgSender()];
     stakez.push(stakeId);
+    stakeIDs.push(stakeId);
     emit Staked(amount, token, stake.since, _msgSender(), stakeId);
   }
 
@@ -91,6 +94,17 @@ contract StakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard, IStak
         stakez[i] = bytes32(0);
       }
     }
+  }
+
+  function withdrawRewards(bytes32 stakeId) external whenNotPaused nonReentrant {
+    Stake storage stake = stakes[stakeId];
+    require(_msgSender() == stake.staker, "not_owner");
+    uint256 reward = calculateReward(stakeId);
+    address token = stake.tokenStaked != tokenA ? tokenB : tokenA;
+    uint256 amount = stake.amountStaked.add(reward);
+    TransferHelpers._safeTransferERC20(token, stake.staker, amount);
+    stake.since = block.timestamp;
+    emit Withdrawn(amount, stakeId);
   }
 
   function pause() external {

@@ -7,10 +7,10 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "./interfaces/ILaunchpad.sol";
+import "./interfaces/ITokenSaleCreator.sol";
 import "./helpers/TransferHelper.sol";
 
-contract Launchpad is ReentrancyGuard, Pausable, Ownable, AccessControl, ILaunchpad {
+contract TokenSaleCreator is ReentrancyGuard, Pausable, Ownable, AccessControl, ITokenSaleCreator {
   using Address for address;
   using SafeMath for uint256;
 
@@ -25,8 +25,8 @@ contract Launchpad is ReentrancyGuard, Pausable, Ownable, AccessControl, ILaunch
   mapping(bytes32 => TokenSaleItem) private tokenSales;
   mapping(bytes32 => uint256) private totalEtherRaised;
   mapping(bytes32 => mapping(address => bool)) private isNotAllowedToContribute;
-  mapping(bytes32 => mapping(address => uint256)) private amountContributed;
-  mapping(bytes32 => mapping(address => uint256)) private balance;
+  mapping(bytes32 => mapping(address => uint256)) public amountContributed;
+  mapping(bytes32 => mapping(address => uint256)) public balance;
 
   modifier whenParamsSatisfied(bytes32 saleId) {
     TokenSaleItem memory tokenSale = tokenSales[saleId];
@@ -78,23 +78,28 @@ contract Launchpad is ReentrancyGuard, Pausable, Ownable, AccessControl, ILaunch
         proceedsTo
       )
     );
-    tokenSales[saleId] = TokenSaleItem(
-      token,
-      tokensForSale,
-      hardCap,
-      softCap,
-      presaleRate,
-      saleId,
-      minContributionEther,
-      maxContributionEther,
-      saleStartTime,
-      saleStartTime.add(daysToLast * 1 days),
-      false,
-      proceedsTo,
-      admin,
-      tokensForSale,
-      false
-    );
+    // Added to prevent 'stack too deep' error
+    uint256 endTime;
+    {
+      endTime = saleStartTime.add(daysToLast.mul(1 days));
+      tokenSales[saleId] = TokenSaleItem(
+        token,
+        tokensForSale,
+        hardCap,
+        softCap,
+        presaleRate,
+        saleId,
+        minContributionEther,
+        maxContributionEther,
+        saleStartTime,
+        endTime,
+        false,
+        proceedsTo,
+        admin,
+        tokensForSale,
+        false
+      );
+    }
     allTokenSales.push(saleId);
     emit TokenSaleItemCreated(
       saleId,
@@ -106,7 +111,7 @@ contract Launchpad is ReentrancyGuard, Pausable, Ownable, AccessControl, ILaunch
       minContributionEther,
       maxContributionEther,
       saleStartTime,
-      saleStartTime.add(daysToLast * 1 days),
+      endTime,
       proceedsTo,
       admin
     );
@@ -128,9 +133,9 @@ contract Launchpad is ReentrancyGuard, Pausable, Ownable, AccessControl, ILaunch
 
   function normalWithdrawal(bytes32 saleId) external whenNotPaused nonReentrant {
     TokenSaleItem storage tokenSaleItem = tokenSales[saleId];
+    require(tokenSaleItem.ended || block.timestamp >= tokenSaleItem.saleEndTime, "sale_has_not_ended");
     TransferHelpers._safeTransferERC20(tokenSaleItem.token, _msgSender(), balance[saleId][_msgSender()]);
     delete balance[saleId][_msgSender()];
-    delete amountContributed[saleId][_msgSender()];
   }
 
   function emergencyWithdrawal(bytes32 saleId) external nonReentrant {
@@ -185,12 +190,12 @@ contract Launchpad is ReentrancyGuard, Pausable, Ownable, AccessControl, ILaunch
     isNotAllowedToContribute[saleId][account] = false;
   }
 
-  function pauseLaunchpad() external whenNotPaused {
+  function pause() external whenNotPaused {
     require(hasRole(pauserRole, _msgSender()), "must_have_pauser_role");
     _pause();
   }
 
-  function unpauseLaunchpad() external whenPaused {
+  function unpause() external whenPaused {
     require(hasRole(pauserRole, _msgSender()), "must_have_pauser_role");
     _unpause();
   }
