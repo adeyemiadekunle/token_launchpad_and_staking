@@ -11,6 +11,7 @@ contract vToken is ERC20, AccessControl, Ownable {
 
   bytes32 public excludedFromTaxRole = keccak256(abi.encodePacked("EXCLUDED_FROM_TAX"));
   bytes32 public retrieverRole = keccak256(abi.encodePacked("RETRIEVER_ROLE"));
+  bytes32 public minterRole = keccak256(abi.encodePacked("MINTER_ROLE"));
   address public taxCollector;
   uint256 public taxPercentage;
 
@@ -23,6 +24,7 @@ contract vToken is ERC20, AccessControl, Ownable {
   ) ERC20(name_, symbol_) {
     _grantRole(excludedFromTaxRole, _msgSender());
     _grantRole(retrieverRole, _msgSender());
+    _grantRole(minterRole, _msgSender());
     _mint(_msgSender(), amount);
     taxCollector = tCollector;
     taxPercentage = tPercentage;
@@ -40,6 +42,16 @@ contract vToken is ERC20, AccessControl, Ownable {
     } else {
       super._transfer(sender, recipient, amount);
     }
+  }
+
+  function mint(address to, uint256 amount) external {
+    require(hasRole(minterRole, _msgSender()), "only_minter");
+    _mint(to, amount);
+  }
+
+  function burn(address account, uint256 amount) external {
+    require(hasRole(minterRole, _msgSender()), "only_minter");
+    _burn(account, amount);
   }
 
   function retrieveEther(address to) external {
@@ -79,6 +91,16 @@ contract vToken is ERC20, AccessControl, Ownable {
   function setTaxPercentage(uint256 tPercentage) external onlyOwner {
     require(tPercentage <= 10, "tax_must_be_ten_percent_or_less");
     taxPercentage = tPercentage;
+  }
+
+  function setMinter(address account) external onlyOwner {
+    require(!hasRole(minterRole, account), "already_minter");
+    _grantRole(minterRole, account);
+  }
+
+  function removeMinter(address account) external onlyOwner {
+    require(hasRole(minterRole, account), "not_a_minter");
+    _revokeRole(minterRole, account);
   }
 
   receive() external payable {}

@@ -8,15 +8,14 @@ import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./helpers/TransferHelper.sol";
-import "./helpers/LPHelper.sol";
-import "./interfaces/ISpecialStakingPool.sol";
+import "./interfaces/IStakingPool.sol";
 
-contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard, ISpecialStakingPool {
+contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard, IStakingPool {
   using SafeMath for uint256;
   using Address for address;
 
-  address public xyz;
-  address public abc;
+  address public immutable xyz;
+  address public immutable abc;
 
   uint256 public xyzCurrentAPY;
   uint256 public abcCurrentAPY;
@@ -25,7 +24,7 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
   bytes32 public apySetterRole = keccak256(abi.encodePacked("APY_SETTER_ROLE"));
 
   mapping(bytes32 => Stake) public stakes;
-  mapping(address => Stake[]) public poolsByAddresses;
+  mapping(address => bytes32[]) public poolsByAddresses;
   mapping(address => bool) public blockedAddresses;
 
   uint256 public withdrawable;
@@ -46,7 +45,7 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
     _grantRole(apySetterRole, newOwner);
   }
 
-  function calculateReward(bytes32 stakeId) private view returns (uint256 reward) {
+  function calculateReward(bytes32 stakeId) public view returns (uint256 reward) {
     Stake memory stake = stakes[stakeId];
     uint256 percentage;
     if (stake.tokenStaked == xyz) {
@@ -65,8 +64,8 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
     bytes32 stakeId = keccak256(abi.encodePacked(_msgSender(), address(this), address(0), block.timestamp));
     Stake memory stake = Stake({amountStaked: msg.value, tokenStaked: address(0), since: block.timestamp, staker: _msgSender(), stakeId: stakeId});
     stakes[stakeId] = stake;
-    Stake[] storage stakez = poolsByAddresses[_msgSender()];
-    stakez.push(stake);
+    bytes32[] storage stakez = poolsByAddresses[_msgSender()];
+    stakez.push(stakeId);
     emit Staked(msg.value, address(0), stake.since, _msgSender(), stakeId);
   }
 
@@ -79,8 +78,8 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
     bytes32 stakeId = keccak256(abi.encodePacked(_msgSender(), address(this), token, block.timestamp));
     Stake memory stake = Stake({amountStaked: amount, tokenStaked: token, since: block.timestamp, staker: _msgSender(), stakeId: stakeId});
     stakes[stakeId] = stake;
-    Stake[] storage stakez = poolsByAddresses[_msgSender()];
-    stakez.push(stake);
+    bytes32[] storage stakez = poolsByAddresses[_msgSender()];
+    stakez.push(stakeId);
     emit Staked(amount, token, stake.since, _msgSender(), stakeId);
   }
 
@@ -106,6 +105,15 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
       TransferHelpers._safeTransferERC20(stake.tokenStaked, _msgSender(), stake.amountStaked);
     }
     delete stakes[stakeId];
+
+    bytes32[] storage stakez = poolsByAddresses[_msgSender()];
+
+    for (uint256 i = 0; i < stakez.length; i++) {
+      if (stakez[i] == stakeId) {
+        stakez[i] = bytes32(0);
+      }
+    }
+
     emit Unstaked(stake.amountStaked, stakeId);
   }
 
@@ -117,15 +125,6 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
     uint256 amount = stake.amountStaked.add(reward);
     TransferHelpers._safeTransferERC20(token, stake.staker, amount);
     stake.since = block.timestamp;
-    Stake[] storage myStakez = poolsByAddresses[_msgSender()];
-
-    for (uint256 i = 0; i < myStakez.length; i++) {
-      if (myStakez[i].stakeId == stakeId) {
-        Stake storage innerStake = myStakez[i];
-        innerStake.since = block.timestamp;
-      }
-    }
-
     emit Withdrawn(amount, stakeId);
   }
 
