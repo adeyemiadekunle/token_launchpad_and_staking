@@ -5,8 +5,9 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "./helpers/TransferHelper.sol";
+import "./interfaces/IvToken.sol";
 
-contract vToken is ERC20, AccessControl, Ownable {
+contract vToken is ERC20, AccessControl, Ownable, IvToken {
   using SafeMath for uint256;
 
   bytes32 public excludedFromTaxRole = keccak256(abi.encodePacked("EXCLUDED_FROM_TAX"));
