@@ -9,6 +9,7 @@ import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./helpers/TransferHelper.sol";
 import "./interfaces/IStakingPool.sol";
+import "./interfaces/IvToken.sol";
 
 contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard, IStakingPool {
   using SafeMath for uint256;
@@ -127,7 +128,7 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
     uint256 reward = calculateReward(stakeId);
     address token = stake.tokenStaked != xyz ? xyz : abc;
     uint256 amount = stake.amountStaked.add(reward);
-    TransferHelpers._safeTransferERC20(token, stake.staker, amount);
+    IvToken(token).mint(_msgSender(), amount);
     stake.since = block.timestamp;
     emit Withdrawn(amount, stakeId);
   }
