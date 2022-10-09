@@ -40,7 +40,7 @@ contract StakingPoolActions is Ownable, AccessControl {
   }
 
   function withdrawEther(address to) external {
-    require(hasRole(feeTakerRole, _msgSender()), "only_fee_taker");
+    require(hasRole(feeTakerRole, _msgSender()));
     TransferHelpers._safeTransferEther(to, address(this).balance);
   }
 
@@ -49,32 +49,32 @@ contract StakingPoolActions is Ownable, AccessControl {
     address to,
     uint256 amount
   ) external {
-    require(hasRole(feeTakerRole, _msgSender()), "only_fee_taker");
+    require(hasRole(feeTakerRole, _msgSender()));
     TransferHelpers._safeTransferERC20(token, to, amount);
   }
 
   function setFee(uint256 _fee) external {
-    require(hasRole(feeSetterRole, _msgSender()), "only_fee_setter");
+    require(hasRole(feeSetterRole, _msgSender()));
     deploymentFee = _fee;
   }
 
   function setFeeSetter(address account) external onlyOwner {
-    require(!hasRole(feeSetterRole, account), "already_fee_setter");
+    require(!hasRole(feeSetterRole, account));
     _grantRole(feeSetterRole, account);
   }
 
   function removeFeeSetter(address account) external onlyOwner {
-    require(hasRole(feeSetterRole, account), "not_fee_setter");
+    require(hasRole(feeSetterRole, account));
     _revokeRole(feeSetterRole, account);
   }
 
   function setFeeTaker(address account) external onlyOwner {
-    require(!hasRole(feeTakerRole, account), "already_fee_taker");
+    require(!hasRole(feeTakerRole, account));
     _grantRole(feeTakerRole, account);
   }
 
   function removeFeeTaker(address account) external onlyOwner {
-    require(hasRole(feeTakerRole, account), "not_fee_taker");
+    require(hasRole(feeTakerRole, account));
     _revokeRole(feeTakerRole, account);
   }
 
