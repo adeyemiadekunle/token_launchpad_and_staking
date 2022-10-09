@@ -12,6 +12,7 @@
     "type": "git",
     "url": "git+https://github.com/Vefi-Ecosystem/token_launchpad_and_staking.git"
   },
+  "files": ["contracts", "artifacts"],
   "keywords": [],
   "author": "",
   "license": "ISC",
