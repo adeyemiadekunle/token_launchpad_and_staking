@@ -5,12 +5,14 @@
   "main": "index.js",
   "scripts": {
     "test": "rm -rf artifacts && npx hardhat test",
-    "format": "prettier --write **/**/*.{js,json,sol}"
+    "format": "prettier --write **/**/*.{js,json,sol}",
+    "deploy:bsc:testnet": "npx hardhat run scripts/deploy.js --network bsc_testnet"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Vefi-Ecosystem/token_launchpad_and_staking.git"
   },
+  "files": ["contracts", "artifacts"],
   "keywords": [],
   "author": "",
   "license": "ISC",

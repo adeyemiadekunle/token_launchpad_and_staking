@@ -142,4 +142,34 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
     require(hasRole(pauserRole, _msgSender()), "only_pauser");
     _unpause();
   }
+
+  function setTokenXYZapy(uint256 xyzAPY) external {
+    require(hasRole(apySetterRole, _msgSender()), "only_apy_setter");
+    xyzCurrentAPY = xyzAPY;
+  }
+
+  function setTokenABCapy(uint256 abcAPY) external {
+    require(hasRole(apySetterRole, _msgSender()), "only_apy_setter");
+    abcCurrentAPY = abcAPY;
+  }
+
+  function setAPYSetter(address account) external onlyOwner {
+    require(!hasRole(apySetterRole, account), "already_apy_setter");
+    _grantRole(apySetterRole, account);
+  }
+
+  function removeAPYSetter(address account) external onlyOwner {
+    require(hasRole(apySetterRole, account), "not_apy_setter");
+    _revokeRole(apySetterRole, account);
+  }
+
+  function setPauser(address account) external onlyOwner {
+    require(!hasRole(pauserRole, account), "already_pauser");
+    _grantRole(pauserRole, account);
+  }
+
+  function removePauser(address account) external onlyOwner {
+    require(hasRole(pauserRole, account), "not_pauser");
+    _revokeRole(pauserRole, account);
+  }
 }
