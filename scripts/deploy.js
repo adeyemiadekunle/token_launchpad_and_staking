@@ -29,7 +29,8 @@ const fs = require("fs");
     vToken.address,
     vToken2.address,
     20,
-    10
+    10,
+    2
   );
   specialStakingPool = await specialStakingPool.deployed();
 

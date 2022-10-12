@@ -20,6 +20,7 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
 
   uint256 public xyzCurrentAPY;
   uint256 public abcCurrentAPY;
+  uint256 public stakingPoolTax;
 
   bytes32 public pauserRole = keccak256(abi.encodePacked("PAUSER_ROLE"));
   bytes32 public apySetterRole = keccak256(abi.encodePacked("APY_SETTER_ROLE"));
@@ -27,6 +28,7 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
   mapping(bytes32 => Stake) public stakes;
   mapping(address => bytes32[]) public poolsByAddresses;
   mapping(address => bool) public blockedAddresses;
+  mapping(address => uint256) public nonWithdrawableERC20;
 
   bytes32[] public stakeIDs;
 
@@ -37,12 +39,14 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
     address XYZ,
     address ABC,
     uint256 xyzAPY,
-    uint256 abcAPY
+    uint256 abcAPY,
+    uint256 stakingTax
   ) {
     xyz = XYZ;
     abc = ABC;
     xyzCurrentAPY = xyzAPY;
     abcCurrentAPY = abcAPY;
+    stakingPoolTax = stakingTax;
     _transferOwnership(newOwner);
     _grantRole(pauserRole, newOwner);
     _grantRole(apySetterRole, newOwner);
@@ -64,12 +68,20 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
   function stakeEther() external payable whenNotPaused nonReentrant {
     require(!blockedAddresses[_msgSender()], "blocked");
     require(msg.value > 0, "must_stake_greater_than_0");
+    uint256 tax = msg.value.mul(stakingPoolTax) / 100;
     bytes32 stakeId = keccak256(abi.encodePacked(_msgSender(), address(this), address(0), block.timestamp));
-    Stake memory stake = Stake({amountStaked: msg.value, tokenStaked: address(0), since: block.timestamp, staker: _msgSender(), stakeId: stakeId});
+    Stake memory stake = Stake({
+      amountStaked: msg.value.sub(tax),
+      tokenStaked: address(0),
+      since: block.timestamp,
+      staker: _msgSender(),
+      stakeId: stakeId
+    });
     stakes[stakeId] = stake;
     bytes32[] storage stakez = poolsByAddresses[_msgSender()];
     stakez.push(stakeId);
     stakeIDs.push(stakeId);
+    withdrawable = tax;
     emit Staked(msg.value, address(0), stake.since, _msgSender(), stakeId);
   }
 
@@ -77,14 +89,16 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
     require(token.isContract(), "must_be_contract_address");
     require(!blockedAddresses[_msgSender()], "blocked");
     require(amount > 0, "must_stake_greater_than_0");
+    uint256 tax = amount.mul(stakingPoolTax) / 100;
     require(IERC20(token).allowance(_msgSender(), address(this)) >= amount, "not_enough_allowance");
     TransferHelpers._safeTransferFromERC20(token, _msgSender(), address(this), amount);
     bytes32 stakeId = keccak256(abi.encodePacked(_msgSender(), address(this), token, block.timestamp));
-    Stake memory stake = Stake({amountStaked: amount, tokenStaked: token, since: block.timestamp, staker: _msgSender(), stakeId: stakeId});
+    Stake memory stake = Stake({amountStaked: amount.sub(tax), tokenStaked: token, since: block.timestamp, staker: _msgSender(), stakeId: stakeId});
     stakes[stakeId] = stake;
     bytes32[] storage stakez = poolsByAddresses[_msgSender()];
     stakez.push(stakeId);
     stakeIDs.push(stakeId);
+    nonWithdrawableERC20[token] = nonWithdrawableERC20[token].add(stake.amountStaked);
     emit Staked(amount, token, stake.since, _msgSender(), stakeId);
   }
 
@@ -98,6 +112,7 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
     }
 
     stake.amountStaked = stake.amountStaked.sub(amount);
+    nonWithdrawableERC20[stake.tokenStaked] = nonWithdrawableERC20[stake.tokenStaked].sub(amount);
     emit Unstaked(amount, stakeId);
   }
 
@@ -118,7 +133,7 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
         stakez[i] = bytes32(0);
       }
     }
-
+    nonWithdrawableERC20[stake.tokenStaked] = nonWithdrawableERC20[stake.tokenStaked].sub(stake.amountStaked);
     emit Unstaked(stake.amountStaked, stakeId);
   }
 
@@ -131,6 +146,22 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
     IvToken(token).mint(_msgSender(), amount);
     stake.since = block.timestamp;
     emit Withdrawn(amount, stakeId);
+  }
+
+  function retrieveEther(address to) external onlyOwner {
+    TransferHelpers._safeTransferEther(to, withdrawable);
+  }
+
+  function retrieveERC20(
+    address token,
+    address to,
+    uint256 amount
+  ) external onlyOwner {
+    require(
+      IERC20(token).balanceOf(address(this)) > nonWithdrawableERC20[token] && nonWithdrawableERC20[token] > amount,
+      "you_are_not_allowed_to_withdraw_this_amount_of_erc20"
+    );
+    TransferHelpers._safeTransferERC20(token, to, amount);
   }
 
   function pause() external {
@@ -171,5 +202,9 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
   function removePauser(address account) external onlyOwner {
     require(hasRole(pauserRole, account), "not_pauser");
     _revokeRole(pauserRole, account);
+  }
+
+  receive() external payable {
+    withdrawable = msg.value;
   }
 }
