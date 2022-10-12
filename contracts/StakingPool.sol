@@ -19,10 +19,12 @@ contract StakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard, IStak
   address public immutable tokenB;
   uint256 public tokenAAPY;
   uint256 public tokenBAPY;
+  uint256 public stakingPoolTax;
 
   mapping(bytes32 => Stake) public stakes;
   mapping(address => bytes32[]) public poolsByAddresses;
   mapping(address => bool) public blockedAddresses;
+  mapping(address => uint256) public nonWithdrawableERC20;
 
   bytes32[] public stakeIDs;
 
@@ -31,14 +33,16 @@ contract StakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard, IStak
     address token0,
     address token1,
     uint256 apy1,
-    uint256 apy2
+    uint256 apy2,
+    uint256 poolTax
   ) {
-    require(token0.isContract(), "must_be_contract_or_zero_address");
-    require(token1.isContract(), "must_be_contract_or_zero_address");
+    require(token0.isContract());
+    require(token1.isContract());
     tokenA = token0;
     tokenB = token1;
     tokenAAPY = apy1;
     tokenBAPY = apy2;
+    stakingPoolTax = poolTax;
     _grantRole(pauserRole, _msgSender());
     _grantRole(pauserRole, newOwner);
     _transferOwnership(newOwner);
@@ -58,32 +62,35 @@ contract StakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard, IStak
   }
 
   function stakeAsset(address token, uint256 amount) external whenNotPaused nonReentrant {
-    require(token == tokenA || token == tokenB, "wrong_pool_to_stake_this_token");
-    require(token.isContract(), "must_be_contract_address");
-    require(!blockedAddresses[_msgSender()], "blocked");
-    require(amount > 0, "must_stake_greater_than_0");
-    require(IERC20(token).allowance(_msgSender(), address(this)) >= amount, "not_enough_allowance");
+    require(token == tokenA || token == tokenB);
+    require(token.isContract());
+    require(!blockedAddresses[_msgSender()]);
+    require(amount > 0);
+    uint256 tax = amount.mul(stakingPoolTax) / 100;
+    require(IERC20(token).allowance(_msgSender(), address(this)) >= amount);
     TransferHelpers._safeTransferFromERC20(token, _msgSender(), address(this), amount);
     bytes32 stakeId = keccak256(abi.encodePacked(_msgSender(), address(this), token, block.timestamp));
-    Stake memory stake = Stake({amountStaked: amount, tokenStaked: token, since: block.timestamp, staker: _msgSender(), stakeId: stakeId});
+    Stake memory stake = Stake({amountStaked: amount.sub(tax), tokenStaked: token, since: block.timestamp, staker: _msgSender(), stakeId: stakeId});
     stakes[stakeId] = stake;
     bytes32[] storage stakez = poolsByAddresses[_msgSender()];
     stakez.push(stakeId);
     stakeIDs.push(stakeId);
+    nonWithdrawableERC20[token] = nonWithdrawableERC20[token].add(stake.amountStaked);
     emit Staked(amount, token, stake.since, _msgSender(), stakeId);
   }
 
   function unstakeAmount(bytes32 stakeId, uint256 amount) external whenNotPaused nonReentrant {
     Stake storage stake = stakes[stakeId];
-    require(_msgSender() == stake.staker, "not_owner");
+    require(_msgSender() == stake.staker);
     TransferHelpers._safeTransferERC20(stake.tokenStaked, _msgSender(), amount);
     stake.amountStaked = stake.amountStaked.sub(amount);
+    nonWithdrawableERC20[stake.tokenStaked] = nonWithdrawableERC20[stake.tokenStaked].sub(amount);
     emit Unstaked(amount, stakeId);
   }
 
   function unstakeAll(bytes32 stakeId) external nonReentrant {
     Stake memory stake = stakes[stakeId];
-    require(_msgSender() == stake.staker, "not_owner");
+    require(_msgSender() == stake.staker);
     TransferHelpers._safeTransferERC20(stake.tokenStaked, _msgSender(), stake.amountStaked);
     delete stakes[stakeId];
 
@@ -94,11 +101,13 @@ contract StakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard, IStak
         stakez[i] = bytes32(0);
       }
     }
+    nonWithdrawableERC20[stake.tokenStaked] = nonWithdrawableERC20[stake.tokenStaked].sub(stake.amountStaked);
+    emit Unstaked(stake.amountStaked, stakeId);
   }
 
   function withdrawRewards(bytes32 stakeId) external whenNotPaused nonReentrant {
     Stake storage stake = stakes[stakeId];
-    require(_msgSender() == stake.staker, "not_owner");
+    require(_msgSender() == stake.staker);
     uint256 reward = calculateReward(stakeId);
     address token = stake.tokenStaked != tokenA ? tokenB : tokenA;
     uint256 amount = stake.amountStaked.add(reward);
@@ -107,13 +116,30 @@ contract StakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard, IStak
     emit Withdrawn(amount, stakeId);
   }
 
+  function retrieveEther(address to) external onlyOwner {
+    TransferHelpers._safeTransferEther(to, address(this).balance);
+  }
+
+  function retrieveERC20(
+    address token,
+    address to,
+    uint256 amount
+  ) external onlyOwner {
+    require(
+      IERC20(token).balanceOf(address(this)) > nonWithdrawableERC20[token] && nonWithdrawableERC20[token] > amount
+    );
+    TransferHelpers._safeTransferERC20(token, to, amount);
+  }
+
   function pause() external {
-    require(hasRole(pauserRole, _msgSender()), "only_pauser");
+    require(hasRole(pauserRole, _msgSender()));
     _pause();
   }
 
   function unpause() external {
-    require(hasRole(pauserRole, _msgSender()), "only_pauser");
+    require(hasRole(pauserRole, _msgSender()));
     _unpause();
   }
+
+  receive() external payable {}
 }
