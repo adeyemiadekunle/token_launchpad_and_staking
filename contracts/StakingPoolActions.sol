@@ -22,12 +22,16 @@ contract StakingPoolActions is Ownable, AccessControl {
   function deployStakingPool(
     address token0,
     address token1,
-    uint256 apy1,
-    uint256 apy2,
-    uint256 taxPercentage
+    uint16 apy1,
+    uint16 apy2,
+    uint8 taxPercentage,
+    uint256 withdrawalIntervals
   ) external payable returns (address poolId) {
     require(msg.value >= deploymentFee);
-    bytes memory bytecode = abi.encodePacked(type(StakingPool).creationCode, abi.encode(_msgSender(), token0, token1, apy1, apy2, taxPercentage));
+    bytes memory bytecode = abi.encodePacked(
+      type(StakingPool).creationCode,
+      abi.encode(_msgSender(), token0, token1, apy1, apy2, taxPercentage, withdrawalIntervals)
+    );
     bytes32 salt = keccak256(abi.encodePacked(token0, token1, apy1, apy2, _msgSender(), block.timestamp));
 
     assembly {
