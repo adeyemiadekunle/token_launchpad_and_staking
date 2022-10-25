@@ -11,6 +11,8 @@ contract StakingPoolActions is Ownable, AccessControl {
   bytes32 public feeTakerRole = keccak256(abi.encodePacked("FEE_TAKER_ROLE"));
   bytes32 public feeSetterRole = keccak256(abi.encodePacked("FEE_SETTER_ROLE"));
 
+  mapping(address => address[]) public stakingPools;
+
   event StakingPoolDeployed(address poolId, address owner, address token0, address token1, uint256 apy1, uint256 apy2, uint256 tax);
 
   constructor(uint256 _deploymentFee) {
@@ -40,6 +42,9 @@ contract StakingPoolActions is Ownable, AccessControl {
         revert(0, 0)
       }
     }
+
+    address[] storage usersPools = stakingPools[_msgSender()];
+    usersPools.push(poolId);
 
     emit StakingPoolDeployed(poolId, _msgSender(), token0, token1, apy1, apy2, taxPercentage);
   }
