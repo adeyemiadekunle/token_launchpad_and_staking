@@ -15,12 +15,13 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
   using SafeMath for uint256;
   using Address for address;
 
-  address public immutable xyz;
-  address public immutable abc;
+  address public immutable tokenA;
+  address public immutable tokenB;
 
-  uint256 public xyzCurrentAPY;
-  uint256 public abcCurrentAPY;
-  uint256 public stakingPoolTax;
+  uint16 public tokenAAPY;
+  uint16 public tokenBAPY;
+  uint8 public stakingPoolTax;
+  uint256 public withdrawalIntervals;
 
   bytes32 public pauserRole = keccak256(abi.encodePacked("PAUSER_ROLE"));
   bytes32 public apySetterRole = keccak256(abi.encodePacked("APY_SETTER_ROLE"));
@@ -36,17 +37,19 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
 
   constructor(
     address newOwner,
-    address XYZ,
-    address ABC,
-    uint256 xyzAPY,
-    uint256 abcAPY,
-    uint256 stakingTax
+    address A,
+    address B,
+    uint16 aAPY,
+    uint16 bAPY,
+    uint8 stakingTax,
+    uint256 intervals
   ) {
-    xyz = XYZ;
-    abc = ABC;
-    xyzCurrentAPY = xyzAPY;
-    abcCurrentAPY = abcAPY;
+    tokenA = A;
+    tokenB = B;
+    tokenAAPY = aAPY;
+    tokenBAPY = bAPY;
     stakingPoolTax = stakingTax;
+    withdrawalIntervals = intervals;
     _transferOwnership(newOwner);
     _grantRole(pauserRole, newOwner);
     _grantRole(apySetterRole, newOwner);
@@ -55,11 +58,11 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
   function calculateReward(bytes32 stakeId) public view returns (uint256 reward) {
     Stake memory stake = stakes[stakeId];
     uint256 percentage;
-    if (stake.tokenStaked == xyz) {
+    if (stake.tokenStaked == tokenA) {
       // How much percentage reward does this staker yield?
-      percentage = uint256(abcCurrentAPY).mul(block.timestamp.sub(stake.since) / (60 * 60 * 24 * 7 * 4)).div(12);
+      percentage = uint256(tokenBAPY).mul(block.timestamp.sub(stake.since) / (60 * 60 * 24 * 7 * 4)).div(12);
     } else {
-      percentage = uint256(xyzCurrentAPY).mul(block.timestamp.sub(stake.since) / (60 * 60 * 24 * 7 * 4)).div(12);
+      percentage = uint256(tokenAAPY).mul(block.timestamp.sub(stake.since) / (60 * 60 * 24 * 7 * 4)).div(12);
     }
 
     reward = stake.amountStaked.mul(percentage) / 100;
@@ -75,7 +78,8 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
       tokenStaked: address(0),
       since: block.timestamp,
       staker: _msgSender(),
-      stakeId: stakeId
+      stakeId: stakeId,
+      nextWithdrawalTime: block.timestamp.add(withdrawalIntervals)
     });
     stakes[stakeId] = stake;
     bytes32[] storage stakez = poolsByAddresses[_msgSender()];
@@ -85,7 +89,7 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
     emit Staked(msg.value, address(0), stake.since, _msgSender(), stakeId);
   }
 
-  function stakeToken(address token, uint256 amount) external whenNotPaused nonReentrant {
+  function stakeAsset(address token, uint256 amount) external whenNotPaused nonReentrant {
     require(token.isContract(), "must_be_contract_address");
     require(!blockedAddresses[_msgSender()], "blocked");
     require(amount > 0, "must_stake_greater_than_0");
@@ -93,7 +97,14 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
     require(IERC20(token).allowance(_msgSender(), address(this)) >= amount, "not_enough_allowance");
     TransferHelpers._safeTransferFromERC20(token, _msgSender(), address(this), amount);
     bytes32 stakeId = keccak256(abi.encodePacked(_msgSender(), address(this), token, block.timestamp));
-    Stake memory stake = Stake({amountStaked: amount.sub(tax), tokenStaked: token, since: block.timestamp, staker: _msgSender(), stakeId: stakeId});
+    Stake memory stake = Stake({
+      amountStaked: amount.sub(tax),
+      tokenStaked: token,
+      since: block.timestamp,
+      staker: _msgSender(),
+      stakeId: stakeId,
+      nextWithdrawalTime: block.timestamp.add(withdrawalIntervals)
+    });
     stakes[stakeId] = stake;
     bytes32[] storage stakez = poolsByAddresses[_msgSender()];
     stakez.push(stakeId);
@@ -140,8 +151,9 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
   function withdrawRewards(bytes32 stakeId) external whenNotPaused nonReentrant {
     Stake storage stake = stakes[stakeId];
     require(_msgSender() == stake.staker, "not_owner");
+    require(block.timestamp >= stake.nextWithdrawalTime, "cannot_withdraw_now");
     uint256 reward = calculateReward(stakeId);
-    address token = stake.tokenStaked != xyz ? xyz : abc;
+    address token = stake.tokenStaked == tokenA ? tokenB : tokenA;
     uint256 amount = stake.amountStaked.add(reward);
     IvToken(token).mint(_msgSender(), amount);
     stake.since = block.timestamp;
@@ -174,14 +186,14 @@ contract SpecialStakingPool is Ownable, AccessControl, Pausable, ReentrancyGuard
     _unpause();
   }
 
-  function setTokenXYZapy(uint256 xyzAPY) external {
+  function setTokenAAPY(uint8 aAPY) external {
     require(hasRole(apySetterRole, _msgSender()), "only_apy_setter");
-    xyzCurrentAPY = xyzAPY;
+    tokenAAPY = aAPY;
   }
 
-  function setTokenABCapy(uint256 abcAPY) external {
+  function setTokenBAPY(uint8 bAPY) external {
     require(hasRole(apySetterRole, _msgSender()), "only_apy_setter");
-    abcCurrentAPY = abcAPY;
+    tokenBAPY = bAPY;
   }
 
   function setAPYSetter(address account) external onlyOwner {
