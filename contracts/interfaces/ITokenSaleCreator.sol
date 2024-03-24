@@ -1,61 +1,50 @@
-pragma solidity ^0.8.0;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.11;
 
 
 
 interface ITokenSaleCreator {
-  struct TokenSaleItem {
+  // Struct to hold details of a token sale
+  struct TokenSaleDetails {
     address token;
     uint256 tokensForSale;
     uint256 hardCap;
     uint256 softCap;
     uint256 privatePresaleRate;
     uint256 publicPresaleRate;
-    bytes32 saleId;
     uint256 minContributionEther;
     uint256 maxContributionEther;
     uint256 saleStartTime;
-    uint256 saleEndTime;
-    uint256 privateSaledEndTime;
-    bool interrupted;
+    uint256 daysToLast;  // Use daysToLast instead of pre-calculated saleEndTime
     address proceedsTo;
     address admin;
-    uint256 availableTokens;
-    bool ended;
     bool refundable;
+    uint256 privateSaleEndTime;
   }
 
+
+  struct TokenSaleItem {
+    TokenSaleDetails details;
+    bool interrupted;
+    bool ended;
+    uint256 saleEndTime; // New field to store the calculated end time
+  }
+
+  struct Contributor {
+    address contributorAddress;
+    uint256 amountContributed;
+}
+
+  // Event for token sale creation
   event TokenSaleItemCreated(
     bytes32 saleId,
-    address token,
-    uint256 tokensForSale,
-    uint256 hardCap,
-    uint256 softCap,
-    uint256 privatePresaleRate;
-    uint256 publicPresaleRate;
-    uint256 minContributionEther,
-    uint256 maxContributionEther,
-    uint256 saleStartTime,
-    uint256 saleEndTime,
-    address proceedsTo,
-    address admin,
-    bool refundable
+    TokenSaleDetails details  // Use the struct for clearer representation
   );
 
+
+  // Function to initiate a token sale
   function initTokenSale(
-    address token,
-    uint256 tokensForSale,
-    uint256 hardCap,
-    uint256 softCap,
-    uint256 privatePresaleRate;
-    uint256 publicPresaleRate;
-    uint256 minContributionEther,
-    uint256 maxContributionEther,
-    uint256 saleStartTime,
-    uint256 privateSaledEndTime;
-    uint256 daysToLast,
-    address proceedsTo,
-    address admin,
-    bool refundable
+    TokenSaleDetails memory details // Pass the struct as argument
   ) external returns (bytes32 saleId);
 
   function interrupTokenSale(bytes32 saleId) external;
